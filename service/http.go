@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -40,7 +41,10 @@ func Proxy(raw, key string) (http.Handler, error) {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.ResponseHeaderTimeout = 10 * time.Second
 	p.Transport = tr
-	p.ErrorHandler = func(w http.ResponseWriter, r *http.Request, e error) { http.Error(w, "service unavailable", 503) }
+	p.ErrorHandler = func(w http.ResponseWriter, r *http.Request, e error) {
+		log.Printf("WFC upstream %s failed: %v", u.Host, e)
+		http.Error(w, "service unavailable", 503)
+	}
 	return p, nil
 }
 func Server(addr string, h http.Handler) *http.Server {
