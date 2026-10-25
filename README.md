@@ -1,20 +1,45 @@
-# wfc-common
+# Wii/DS WFC Common Library
 
-Shared wire formats, identity and friend-code helpers, configuration, database
-access and authenticated HTTP transport for the split Wii/DS services.
-No daemon or container image. AGPL-3.0, derived from WiiLink WFC.
+OpenPak's Wii/DS WFC Common Library.
 
-Consumers use a sibling replace and commit vendor/, so their standalone builds
-need no workspace or sibling checkout. Refresh all consumers after changes.
-`GOWORK=off go test ./...` and `GOWORK=off go vet ./...` verify this module.
+| | |
+| --- | --- |
+| Network | Wii and Nintendo DS |
+| Language | Go module `openpak/wfc-common` (Go 1.25) |
+| Based on | [WiiLink WFC](https://github.com/WiiLink24/wfc-server), AGPL-3.0 |
+| Licence | AGPL-3.0-only |
 
-All processes call common.LoadTokenKey before serving; WFC_TOKEN_KEY_FILE names
-an operator-generated binary key of at least 32 bytes. Purpose-derived keys preserve
-the native NAS and login-ticket wire formats across independent process restarts.
-Existing process-random tickets require a reconnect at initial migration.
-Internal HTTP requests use WFC_INTERNAL_KEY, at least 32 bytes, and fail closed.
+## Packages
 
-Full protocol split adds immutable GameSpy error/form codecs and versioned
-wfcapi, gpcmclient and qr2client contracts. No protocol server implementation or
-in-process authoritative session state belongs in this module. Internal calls
-use bounded timeouts and fail closed; all owners authenticate internal requests.
+| Package | What |
+| --- | --- |
+| `common` | Shared wire types, config, encoding, encryption, friend codes, IP helpers, auth tokens, match commands, Mii and Mario Kart Wii data |
+| `database` | Database access: connection, schema, users, login, events, gamestats and SAKE filters |
+| `dwc` | DWC auth request parsing and response writing |
+| `filter` | Expression scanner, parser and evaluator (modified from goexpression) |
+| `gperror` | GameSpy error codes and WFC error messages |
+| `logging` | Levelled logging, output selection and event webhooks |
+| `gpcmclient` | GPCM client helpers (player search verification) |
+| `qr2client` | QR2 client (session server list, group info) |
+| `service` | Internal key, guard and proxy HTTP helpers |
+| `wfcapi` | Internal API contract: client, request decode and reply, room, player and group types |
+
+## Use
+
+```go
+import "openpak/wfc-common/wfcapi"
+```
+
+Consumers use a sibling replace and commit `vendor/`; details in [deploy](docs/deploy.md).
+
+## Docs
+
+- [Protocol](docs/protocol.md)
+- [Evidence](docs/evidence.md)
+- [Deploy](docs/deploy.md)
+- [Notes](docs/notes.md)
+- [Service split](docs/service-split.md)
+
+## Licence
+
+AGPL-3.0-only. See [LICENSE](LICENSE). Derived from WiiLink WFC, AGPL-3.0.
