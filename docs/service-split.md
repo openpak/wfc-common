@@ -97,7 +97,7 @@ checks and are not implied by transport/protocol probes.
 
 All protocol owners are independently deployed: wfc-gpcm, wfc-gpsp,
 wfc-serverbrowser, wfc-qr2, wfc-natneg, wfc-gamestats, wfc-dls, wfc-sake and
-wfc-race at 0.1.0; wfc-api at 0.1.1; wfc-nas at 0.2.0. The shared library is
+wfc-race at 0.1.0; wfc-api at 0.1.2; wfc-nas at 0.2.0. The shared library is
 wfc-common 0.1.0. All repositories have the standard platform topics and semver
 tags. The former combined repositories are archived, not active service units.
 
