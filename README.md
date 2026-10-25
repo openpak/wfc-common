@@ -13,3 +13,8 @@ an operator-generated binary key of at least 32 bytes. Purpose-derived keys pres
 the native NAS and login-ticket wire formats across independent process restarts.
 Existing process-random tickets require a reconnect at initial migration.
 Internal HTTP requests use WFC_INTERNAL_KEY, at least 32 bytes, and fail closed.
+
+Full protocol split adds immutable GameSpy error/form codecs and versioned
+wfcapi, gpcmclient and qr2client contracts. No protocol server implementation or
+in-process authoritative session state belongs in this module. Internal calls
+use bounded timeouts and fail closed; all owners authenticate internal requests.
