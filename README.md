@@ -36,10 +36,10 @@ Consumers use a sibling replace and commit `vendor/`; details in [deploy](docs/d
 
 - [Protocol](docs/protocol.md)
 - [Deploy](docs/deploy.md)
-- [Notes](docs/notes.md)
 - [Service split](docs/service-split.md)
 - [Mario Kart Wii ghost archive](docs/mario-kart-wii-ghosts.md)
 - [Changelog](CHANGELOG.md)
+- [Provenance](docs/provenance.md)
 
 ## Licence
 
