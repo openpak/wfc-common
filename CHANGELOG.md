@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.2.1
+
+- `database.MKWRankOf`: a profile's position on a Mario Kart Wii course board, worldwide or one region, in the order `MKWRankings` uses (for the rankings contract `around` slice).
+
 ## v0.2.0
 
 - Mario Kart Wii: every uploaded ghost is now also kept in `mario_kart_wii_ghosts` with the
