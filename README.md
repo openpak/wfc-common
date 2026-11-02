@@ -35,7 +35,6 @@ Consumers use a sibling replace and commit `vendor/`; details in [deploy](docs/d
 ## Docs
 
 - [Protocol](docs/protocol.md)
-- [Evidence](docs/evidence.md)
 - [Deploy](docs/deploy.md)
 - [Notes](docs/notes.md)
 - [Service split](docs/service-split.md)
