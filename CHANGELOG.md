@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.2
+
+- `MKWRankRow.UserID` (the console the profile belongs to, from `users`) and `database.MKWRankOfUser`
+  (a console's best place on a board): the rankings contract identifies Wii players by the console id
+  the account core links, not by the game profile id.
+
 ## v0.2.1
 
 - `database.MKWRankOf`: a profile's position on a Mario Kart Wii course board, worldwide or one region, in the order `MKWRankings` uses (for the rankings contract `around` slice).
