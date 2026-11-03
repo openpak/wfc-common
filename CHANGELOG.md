@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.3.0
+
+- `httplog`: one log line per request (`http <method> <path> -> <status> <duration>ms`, path only, never
+  the query, headers or bodies; `/healthz` skipped) and `httplog.Command` for the GameSpy-style TCP/UDP
+  protocols (`<proto> cmd <name> -> <result> <duration>ms`, no payload values). Flusher and Hijacker
+  are preserved. `service.Server` now wraps its handler in it, so every service on it logs by default.
+
 ## v0.2.3
 
 - `wfcapi.Login.UserID` and a trailing `userID` argument on `qr2client.Login`: the console user id
