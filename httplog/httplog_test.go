@@ -96,3 +96,33 @@ func TestCommandLine(t *testing.T) {
 		t.Fatalf("got %q", buf.String())
 	}
 }
+
+func TestInternalPollsAreCountedNotLogged(t *testing.T) {
+	buf := capture(t)
+	pollCount.Store(0)
+	h := Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("fail") != "" {
+			w.WriteHeader(500)
+		}
+	}))
+	for i := 0; i < 3; i++ {
+		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/internal/v1/gpcm/sessions?k=SEKRET", nil))
+	}
+	if buf.Len() != 0 {
+		t.Fatalf("poll logged: %q", buf.String())
+	}
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/internal/v1/gpcm/sessions?fail=1", nil))
+	if !strings.HasPrefix(buf.String(), "http POST /internal/v1/gpcm/sessions -> 500 ") {
+		t.Fatalf("failure not logged: %q", buf.String())
+	}
+	buf.Reset()
+	flushPolls()
+	if buf.String() != "internal poll: 3 calls in last minute\n" {
+		t.Fatalf("got %q", buf.String())
+	}
+	buf.Reset()
+	flushPolls()
+	if buf.Len() != 0 {
+		t.Fatalf("empty summary logged: %q", buf.String())
+	}
+}

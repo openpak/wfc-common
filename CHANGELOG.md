@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.1
+
+- `httplog`: successful `/internal/` requests (service-to-service polls) are counted, not logged one by
+  one; one `internal poll: N calls in last minute` line is written per minute. Failures (status >= 400)
+  still log individually.
+
 ## v0.3.0
 
 - `httplog`: one log line per request (`http <method> <path> -> <status> <duration>ms`, path only, never
