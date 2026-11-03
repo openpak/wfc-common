@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.3
+
+- `wfcapi.Login.UserID` and a trailing `userID` argument on `qr2client.Login`: the console user id
+  (the id the account core links) travels with the session projection so qr2 can report online
+  sessions to rewards. Additive on the wire; older peers leave it zero.
+
 ## v0.2.2
 
 - `MKWRankRow.UserID` (the console the profile belongs to, from `users`) and `database.MKWRankOfUser`
