@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.5.0 - 2026-11-04
+
+- `database`: pairing codes for linking a Wii or DS to an OpenPak account (`IssuePairingCode`, `LookupPairingCode`, `RedeemPairingCode`, `ForgetPairing`; tables `wfc_pairing_codes`, `wfc_pairing_linked`, created by `UpdateTables`/`EnsurePairing`). Codes are 8 symbols, valid 30 minutes, single use.
+
 ## v0.4.0 - 2026-11-04
 
 - `mkwboard`: the Wii/DS adapter over the neutral leaderboards core (gRPC client, console user id to account through the account core's `wfc` links, Mario Kart Wii boards, `Reconcile` import of the game's own time table). See [docs/leaderboards.md](docs/leaderboards.md).
