@@ -100,3 +100,45 @@ func TestPairingLifecycle(t *testing.T) {
 	_, _ = pool.Exec(ctx, `DELETE FROM wfc_pairing_codes WHERE user_id=$1`, uid)
 	_ = c.ForgetPairing(ctx, uid)
 }
+
+// TestEraseUsers runs against a real Postgres when WFC_TEST_DSN is set. It needs the users
+// table of a WFC database; other tables are skipped when absent.
+func TestEraseUsers(t *testing.T) {
+	dsn := os.Getenv("WFC_TEST_DSN")
+	if dsn == "" {
+		t.Skip("WFC_TEST_DSN not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	c := &Connection{pool: pool, ctx: ctx}
+	if err := c.EnsurePairing(); err != nil {
+		t.Fatal(err)
+	}
+	const a, b = int64(9000000001), int64(9000000002)
+	for _, u := range []int64{a, b} {
+		_, _ = pool.Exec(ctx, `DELETE FROM users WHERE user_id=$1`, u)
+		if _, err := pool.Exec(ctx, `INSERT INTO users (user_id, gsbrcd, password, ng_device_id, email, unique_nick) VALUES ($1,$2,'',$3,'','')`, u, "ERASE"+strings.Repeat("0", 1)+string(rune('A'+u-a)), []int64{u}); err != nil {
+			t.Fatal(err)
+		}
+		_, _ = pool.Exec(ctx, `INSERT INTO wfc_pairing_linked (user_id) VALUES ($1) ON CONFLICT DO NOTHING`, u)
+	}
+	defer pool.Exec(ctx, `DELETE FROM users WHERE user_id = ANY($1)`, []int64{a, b})
+	defer pool.Exec(ctx, `DELETE FROM wfc_pairing_linked WHERE user_id = ANY($1)`, []int64{a, b})
+
+	n, err := c.EraseUsers(ctx, []int64{a})
+	if err != nil || n < 2 {
+		t.Fatalf("first erase: %d %v", n, err)
+	}
+	if n, err = c.EraseUsers(ctx, []int64{a}); err != nil || n != 0 {
+		t.Fatalf("second erase: %d %v", n, err)
+	}
+	var left int
+	_ = pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE user_id=$1`, b).Scan(&left)
+	if left != 1 {
+		t.Fatal("other account's user row was touched")
+	}
+}

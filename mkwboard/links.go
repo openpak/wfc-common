@@ -64,3 +64,21 @@ func (l *CoreLinks) Account(ctx context.Context, userID int64) (string, bool, er
 	l.mu.Unlock()
 	return res.AccountId, true, nil
 }
+
+// UserIDs lists the console user ids (namespace "wfc") linked to an account. It is used by
+// the erase path, which runs before the core drops the links.
+func (l *CoreLinks) UserIDs(ctx context.Context, accountID string) ([]int64, error) {
+	ctx, cancel := context.WithTimeout(metadata.AppendToOutgoingContext(ctx, "X-API-Key", l.key), callLimit)
+	defer cancel()
+	res, err := l.cli.ListAccountLinks(ctx, &accountv1.ListAccountLinksRequest{AccountId: accountID, Namespace: Network})
+	if err != nil {
+		return nil, err
+	}
+	var out []int64
+	for _, k := range res.GetLinks() {
+		if id, err := strconv.ParseInt(k.GetSubjectId(), 10, 64); err == nil {
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}
