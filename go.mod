@@ -1,6 +1,6 @@
 module openpak/wfc-common
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/jackc/pgx/v5 v5.11.0
@@ -9,7 +9,10 @@ require (
 
 require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 )
 
 require (
@@ -19,4 +22,10 @@ require (
 	github.com/linkdata/deadlock v0.5.5
 	github.com/petermattis/goid v0.0.0-20250813065127-a731cc31b4fe // indirect
 	golang.org/x/text v0.41.0 // indirect
+)
+
+require (
+	github.com/openpak/account-api v0.1.0
+	google.golang.org/grpc v1.83.2
+	google.golang.org/protobuf v1.36.11
 )

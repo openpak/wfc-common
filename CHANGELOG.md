@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.4.0 - 2026-11-04
+
+- `mkwboard`: the Wii/DS adapter over the neutral leaderboards core (gRPC client, console user id to account through the account core's `wfc` links, Mario Kart Wii boards, `Reconcile` import of the game's own time table). See [docs/leaderboards.md](docs/leaderboards.md).
+- `database`: `MKWAllTimes`, `MKWUserOfProfile`, `MKWGhostIDs` (read only).
+
 ## v0.3.1
 
 - `httplog`: successful `/internal/` requests (service-to-service polls) are counted, not logged one by
