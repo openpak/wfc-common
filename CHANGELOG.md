@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.6.1 - 2026-11-04
+
+- Fix: core calls now also send `x-internal-key`; the core only reads that header or a Bearer token, so `X-API-Key` alone was rejected as Unauthenticated (found while enabling the erase on the live box).
+
 ## v0.6.0 - 2026-11-04
 
 - Account erasure (openpak/prds#120): `database.EraseUsers` deletes everything the shared WFC database holds for a set of console user ids in one transaction (profiles in `users`, `gamestats_public_data`, `sake_records` owned by the profiles, `mario_kart_wii_sake` and `mario_kart_wii_ghosts` rows, legacy `sessions`, `events` rows naming the profile, pairing codes and link marks). Idempotent; tables an older deployment lacks are skipped. `service.EraseHandler` serves `DELETE /internal/accounts/{account_id}/data` with `Authorization: Bearer $ACCOUNT_ERASE_KEY` (503 when unset), and `mkwboard.CoreLinks.UserIDs` lists the account's `wfc` links. Decisions: ghosts and sake records are deleted, not credited to a deleted user, because they carry the Mii name and profile id; the leaderboards core owns its own scores.
