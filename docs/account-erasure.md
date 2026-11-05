@@ -13,3 +13,8 @@ owned by those profiles, `mario_kart_wii_sake`, `mario_kart_wii_ghosts`, `sessio
 rows whose `profile_id` is one of them, `wfc_pairing_codes`, `wfc_pairing_linked`.
 Kept: nothing authored by the account; leaderboard scores live in the leaderboards core and
 are erased by its own step. Wii/DS buddy lists are not stored server-side.
+
+Since v0.7.0 the `users` row holds protocol ids (profile_id, user_id, gsbrcd, ng_device_id, password), the ban fields,
+`firstname`/`lastname` (game-written) and a last address that is blanked after 90 days. No email or nick column exists:
+both are derived from user_id and gsbrcd. Names for a console's player belong to the linked core account (pairing flow);
+replacing `firstname`/`lastname` with it needs a decision on which titles read them back, so they stay for now.

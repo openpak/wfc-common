@@ -121,7 +121,7 @@ func TestEraseUsers(t *testing.T) {
 	const a, b = int64(9000000001), int64(9000000002)
 	for _, u := range []int64{a, b} {
 		_, _ = pool.Exec(ctx, `DELETE FROM users WHERE user_id=$1`, u)
-		if _, err := pool.Exec(ctx, `INSERT INTO users (user_id, gsbrcd, password, ng_device_id, email, unique_nick) VALUES ($1,$2,'',$3,'','')`, u, "ERASE"+strings.Repeat("0", 1)+string(rune('A'+u-a)), []int64{u}); err != nil {
+		if _, err := pool.Exec(ctx, `INSERT INTO users (user_id, gsbrcd, password, ng_device_id) VALUES ($1,$2,'',$3)`, u, "ERASE"+strings.Repeat("0", 1)+string(rune('A'+u-a)), []int64{u}); err != nil {
 			t.Fatal(err)
 		}
 		_, _ = pool.Exec(ctx, `INSERT INTO wfc_pairing_linked (user_id) VALUES ($1) ON CONFLICT DO NOTHING`, u)

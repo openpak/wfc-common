@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.7.0 - 2026-11-05
+
+- prds#131: a console's row keeps protocol ids only. `users.email` and `users.unique_nick` were functions of (user_id, gsbrcd) (`<base32 id><gsbrcd>[@nds]`), never a person's address; they are computed (`DerivedNick`, `DerivedEmail`) and the columns are dropped at start-up by `UpdateTables` (idempotent). Deploy every service that reads `users` (wfc-gpcm, wfc-api) on this version before any runs `UpdateTables`.
+- `last_ip_address` stays for ban matching and now has a retention: `last_ip_at` is stamped at each login and `runIPRetention` (started by `UpdateTables`) blanks addresses unseen for 90 days, every 6 hours.
+- `GetProfile`/`ClearProfile` no longer fail on a NULL first or last name.
+- Still local, by decision pending: `firstname`/`lastname` (written by the game with `updatepro`; the pairing flow gives no name to replace them, see docs/account-erasure.md).
+
 ## v0.6.1 - 2026-11-04
 
 - Fix: core calls now also send `x-internal-key`; the core only reads that header or a Bearer token, so `X-API-Key` alone was rejected as Unauthenticated (found while enabling the erase on the live box).
