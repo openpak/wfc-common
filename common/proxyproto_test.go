@@ -33,7 +33,10 @@ func TestProxyListenerReportsTheClient(t *testing.T) {
 	pl := ProxyListener{l}
 	defer pl.Close()
 	go func() {
-		c, _ := net.Dial("tcp", l.Addr().String())
+		c, err := net.Dial("tcp", l.Addr().String())
+		if err != nil {
+			return
+		}
 		c.Write(EncodeProxyV2(true, net.ParseIP("203.0.113.9"), 5555, net.ParseIP("145.241.199.19"), 29900))
 		c.Write([]byte("hi"))
 		time.Sleep(200 * time.Millisecond)
@@ -41,7 +44,10 @@ func TestProxyListenerReportsTheClient(t *testing.T) {
 	}()
 	// A connection without a header is dropped, not returned.
 	go func() {
-		c, _ := net.Dial("tcp", l.Addr().String())
+		c, err := net.Dial("tcp", l.Addr().String())
+		if err != nil {
+			return // the test may already be over
+		}
 		c.Write([]byte("no header here...."))
 		time.Sleep(6 * time.Second)
 		c.Close()
