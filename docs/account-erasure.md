@@ -18,3 +18,8 @@ Since v0.7.0 the `users` row holds protocol ids (profile_id, user_id, gsbrcd, ng
 `firstname`/`lastname` (game-written) and a last address that is blanked after 90 days. No email or nick column exists:
 both are derived from user_id and gsbrcd. Names for a console's player belong to the linked core account (pairing flow);
 replacing `firstname`/`lastname` with it needs a decision on which titles read them back, so they stay for now.
+
+Link-first (v0.8.0, prds#139): `wfc_pairing_linked` also caches the console's core subject
+(`<user_id>.<unix ns>`), link id, account id and unit, and pairing codes carry the game and
+in-game name the console sent. Both are erased with the console. wfc-api's erase reads the
+console ids from the core's links and from this cache.

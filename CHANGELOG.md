@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.8.0 - 2026-11-05
+
+- Link-first (prds#139, design `prds/repos/wfc-link-first-design.md`): a console plays online only once it is linked to an OpenPak account.
+  - `database` pairing v2: codes live 15 minutes and carry a 6-digit link number (100000-999999, unique among live codes) for titles that can only show an error number, plus the unit, game and in-game name for the confirm screen. Limits: 6 new codes per console per hour, 5000 live codes. `ParsePairingInput` takes a code or a number.
+  - Adapter-owned approval: `BeginApproval` (claims a code for an account, gives it a fresh core subject `<user_id>.<unix ns>` so a console can be relinked by another account), `FinishApproval`, `AbortApproval`, `StuckApprovals`, `PendingApproval`. `RedeemPairingCode` is gone.
+  - `wfc_pairing_linked` now caches subject, link id, account and unit; `LinkedConsoleOf`, `ConsolesOf`, `ForgetSubject`, `ForgetAccount`, `PairingCounters`, `CodeHash` (salted tag for logs; codes are never logged).
+  - `LinkFirst()` (`WFC_LINK_FIRST=1`), `LinkGate` (cache first; the core is asked only to heal a half-done approval), `LinkedProfile` and `LinkedUser` (60 s positive cache; always true with the gate off).
+  - `gperror`: 22100 not linked (Mario Kart Wii text with code and number; other titles show the link number as the error code), 22101 unlinked while online, 22102 link state unavailable, in seven languages; `NotLinkedError`, `UnlinkedKickError`, `LinkUnavailableError`.
+  - `mkwboard`: `CoreLinks.LinkActive`/`Reserve`/`Activate`/`Unlink`; `UserIDs` reads both subject forms; `CachedLinker` answers from the local link cache first.
+  - `wfcapi.Login.Unlinked` and `qr2client.LoginAs` for the Wii DNS-exploit login.
+- Fix: a Mario Kart Wii custom error in a language without a translation (PAL English, Korean) now falls back to English instead of showing no text.
+
 ## v0.7.0 - 2026-11-05
 
 - prds#131: a console's row keeps protocol ids only. `users.email` and `users.unique_nick` were functions of (user_id, gsbrcd) (`<base32 id><gsbrcd>[@nds]`), never a person's address; they are computed (`DerivedNick`, `DerivedEmail`) and the columns are dropped at start-up by `UpdateTables` (idempotent). Deploy every service that reads `users` (wfc-gpcm, wfc-api) on this version before any runs `UpdateTables`.
