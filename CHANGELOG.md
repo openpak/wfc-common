@@ -3,13 +3,14 @@
 ## v0.8.0 - 2026-11-05
 
 - Link-first (prds#139, design `prds/repos/wfc-link-first-design.md`): a console plays online only once it is linked to an OpenPak account.
-  - `database` pairing v2: codes live 15 minutes and carry a 6-digit link number (100000-999999, unique among live codes) for titles that can only show an error number, plus the unit, game and in-game name for the confirm screen. Limits: 6 new codes per console per hour, 5000 live codes. `ParsePairingInput` takes a code or a number.
+  - `database` pairing v2: codes live 15 minutes and carry a link number, a NAS return code 4000-9999 that every DWC title shows as "Error Code: 2xxxx" (`DisplayNumber`; measured on Marina and melonDS, step 0 of prds#139), unique among live codes, plus the unit, game, in-game name and a network tag. Limits: 6 new codes per console per hour, 2000 live codes. `ParsePairingInput` takes the 8-symbol code or the 5-digit number the console showed.
+  - A claim by number needs a `NumberProof`: the claimer's `NetTags` (keyed, day-scoped hash of the IPv4 address or IPv6 /64, `NetTagKey` = `WFC_NET_TAG_KEY` or `WFC_INTERNAL_KEY`; no address is stored) matching the console's, or the console's in-game name. Otherwise it reads as unknown. `ConsoleBanned` checks a console that has no profile yet.
   - Adapter-owned approval: `BeginApproval` (claims a code for an account, gives it a fresh core subject `<user_id>.<unix ns>` so a console can be relinked by another account), `FinishApproval`, `AbortApproval`, `StuckApprovals`, `PendingApproval`. `RedeemPairingCode` is gone.
   - `wfc_pairing_linked` now caches subject, link id, account and unit; `LinkedConsoleOf`, `ConsolesOf`, `ForgetSubject`, `ForgetAccount`, `PairingCounters`, `CodeHash` (salted tag for logs; codes are never logged).
   - `LinkFirst()` (`WFC_LINK_FIRST=1`), `LinkGate` (cache first; the core is asked only to heal a half-done approval), `LinkedProfile` and `LinkedUser` (60 s positive cache; always true with the gate off).
-  - `gperror`: 22100 not linked (Mario Kart Wii text with code and number; other titles show the link number as the error code), 22101 unlinked while online, 22102 link state unavailable, in seven languages; `NotLinkedError`, `UnlinkedKickError`, `LinkUnavailableError`.
+  - `gperror`: 22100 not linked (Mario Kart Wii text with code and number; other Wii titles get the shown number as wl:err), 22101 unlinked while online, 22102 link state unavailable, in seven languages; `NotLinkedError`, `UnlinkedKickError`, `LinkUnavailableError`.
   - `mkwboard`: `CoreLinks.LinkActive`/`Reserve`/`Activate`/`Unlink`; `UserIDs` reads both subject forms; `CachedLinker` answers from the local link cache first.
-  - `wfcapi.Login.Unlinked` and `qr2client.LoginAs` for the Wii DNS-exploit login.
+  - `wfcapi.Login.Unlinked` and `qr2client.LoginAs` for the Wii DNS-exploit login; `wfcapi.GPCMRequest.UserID` and `gpcmclient.KickUser` (op `kick-user`); `Connection.Ready`.
 - Fix: a Mario Kart Wii custom error in a language without a translation (PAL English, Korean) now falls back to English instead of showing no text.
 
 ## v0.7.0 - 2026-11-05

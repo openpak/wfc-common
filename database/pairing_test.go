@@ -1,11 +1,13 @@
 package database
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -44,10 +46,10 @@ func TestParsePairingInput(t *testing.T) {
 	if c, n, ok := ParsePairingInput("abcd-2345"); !ok || c != "ABCD2345" || n != 0 {
 		t.Fatalf("code: %q %d %v", c, n, ok)
 	}
-	if c, n, ok := ParsePairingInput(" 482 913 "); !ok || c != "" || n != 482913 {
+	if c, n, ok := ParsePairingInput(" 24 829 "); !ok || c != "" || n != 4829 {
 		t.Fatalf("number: %q %d %v", c, n, ok)
 	}
-	for _, in := range []string{"099999", "1000000", "12345", "ABCD", ""} {
+	for _, in := range []string{"23999", "30000", "4829", "482913", "ABCD", ""} {
 		if _, _, ok := ParsePairingInput(in); ok {
 			t.Errorf("%q should be rejected", in)
 		}
@@ -56,6 +58,20 @@ func TestParsePairingInput(t *testing.T) {
 		if n := NewLinkNumber(); n < linkNumberMin || n > linkNumberMax {
 			t.Fatalf("number out of range: %d", n)
 		}
+	}
+	k := []byte("k")
+	now := time.Now()
+	if !bytes.Equal(NetTag(k, "198.51.100.7:5", now), NetTag(k, "198.51.100.7", now)) {
+		t.Fatal("port must not matter")
+	}
+	if bytes.Equal(NetTag(k, "198.51.100.7", now), NetTag(k, "198.51.100.8", now)) {
+		t.Fatal("IPv4 tags are per address")
+	}
+	if !bytes.Equal(NetTag(k, "2001:db8:1:2::5", now), NetTag(k, "[2001:db8:1:2:aa::9]:443", now)) {
+		t.Fatal("IPv6 tags are per /64")
+	}
+	if NetTag(nil, "198.51.100.7", now) != nil || NetTag(k, "junk", now) != nil {
+		t.Fatal("no key or no address: no tag")
 	}
 	if id, ok := SubjectUserID("123456789.1730000000000"); !ok || id != 123456789 {
 		t.Fatal("subject parse")
@@ -101,7 +117,11 @@ func TestPairingLifecycle(t *testing.T) {
 	}
 	clean()
 	defer clean()
-	req := PairingRequest{UserID: uid, Unit: UnitWii, GameCode: "RMCJ", Name: "Tobagin"}
+	key := []byte("test-key")
+	home := NetTag(key, "198.51.100.7:1234", time.Now())
+	req := PairingRequest{UserID: uid, Unit: UnitWii, GameCode: "RMCJ", Name: "Tobagin", NetTag: home}
+	atHome := NumberProof{NetTags: NetTags(key, "198.51.100.7", time.Now())}
+	elsewhere := NumberProof{NetTags: NetTags(key, "203.0.113.5", time.Now())}
 
 	p, err := c.IssuePairingCode(ctx, req)
 	if err != nil || p.Code == "" || p.Number < linkNumberMin {
@@ -111,32 +131,42 @@ func TestPairingLifecycle(t *testing.T) {
 	if again.Code != p.Code || again.Number != p.Number {
 		t.Fatalf("a live code must be reused: %+v vs %+v", again, p)
 	}
-	for _, in := range []string{strings.ToLower(FormatPairingCode(p.Code)), strconv.Itoa(p.Number)} {
-		got, err := c.LookupPairingCode(ctx, in)
+	num := strconv.Itoa(DisplayNumber(p.Number))
+	if _, err := c.LookupPairingCode(ctx, num, elsewhere); err != ErrPairingCode {
+		t.Fatalf("a number from another network must not resolve: %v", err)
+	}
+	if got, err := c.LookupPairingCode(ctx, num, NumberProof{Name: " tobagin "}); err != nil || !got.ByNumber {
+		t.Fatalf("a number with the in-game name: %+v %v", got, err)
+	}
+	for _, in := range []string{strings.ToLower(FormatPairingCode(p.Code)), num} {
+		got, err := c.LookupPairingCode(ctx, in, atHome)
 		if err != nil || got.UserID != uid || got.Unit != UnitWii || got.GameCode != "RMCJ" || got.Name != "Tobagin" || got.Code != p.Code {
 			t.Fatalf("lookup %q: %+v %v", in, got, err)
 		}
 	}
-	if _, err := c.LookupPairingCode(ctx, "AAAAAAAA"); err != ErrPairingCode {
+	if _, err := c.LookupPairingCode(ctx, "AAAAAAAA", NumberProof{}); err != ErrPairingCode {
 		t.Fatalf("unknown: %v", err)
 	}
 
 	// Approval: another account cannot claim a code mid-approval; the same account resumes
 	// with the same subject.
-	t1, linked, err := c.BeginApproval(ctx, strconv.Itoa(p.Number), "acct-a")
+	if _, _, err := c.BeginApproval(ctx, num, "acct-a", elsewhere); err != ErrPairingCode {
+		t.Fatalf("approve by number without proof: %v", err)
+	}
+	t1, linked, err := c.BeginApproval(ctx, num, "acct-a", atHome)
 	if err != nil || linked || t1.Subject == "" {
 		t.Fatalf("begin: %+v %v %v", t1, linked, err)
 	}
 	if id, ok := SubjectUserID(t1.Subject); !ok || id != uid {
 		t.Fatalf("subject %q", t1.Subject)
 	}
-	if _, _, err := c.BeginApproval(ctx, p.Code, "acct-b"); err != ErrPairingCode {
+	if _, _, err := c.BeginApproval(ctx, p.Code, "acct-b", NumberProof{}); err != ErrPairingCode {
 		t.Fatalf("other account mid-approval: %v", err)
 	}
-	if _, err := c.LookupPairingCode(ctx, p.Code); err != ErrPairingCode {
+	if _, err := c.LookupPairingCode(ctx, p.Code, NumberProof{}); err != ErrPairingCode {
 		t.Fatalf("lookup mid-approval: %v", err)
 	}
-	t2, _, err := c.BeginApproval(ctx, p.Code, "acct-a")
+	t2, _, err := c.BeginApproval(ctx, p.Code, "acct-a", NumberProof{})
 	if err != nil || t2.Subject != t1.Subject {
 		t.Fatalf("resume: %+v %v", t2, err)
 	}
@@ -156,7 +186,7 @@ func TestPairingLifecycle(t *testing.T) {
 	if list, err := c.ConsolesOf(ctx, "acct-a"); err != nil || len(list) != 1 {
 		t.Fatalf("consoles: %+v %v", list, err)
 	}
-	if _, _, err := c.BeginApproval(ctx, p.Code, "acct-a"); err != ErrPairingCode {
+	if _, _, err := c.BeginApproval(ctx, p.Code, "acct-a", NumberProof{}); err != ErrPairingCode {
 		t.Fatalf("single use: %v", err)
 	}
 
@@ -165,10 +195,10 @@ func TestPairingLifecycle(t *testing.T) {
 	if err != nil || p2.Code == p.Code {
 		t.Fatalf("issue 2: %+v %v", p2, err)
 	}
-	if _, _, err := c.BeginApproval(ctx, p2.Code, "acct-b"); err != ErrConsoleLinked {
+	if _, _, err := c.BeginApproval(ctx, p2.Code, "acct-b", NumberProof{}); err != ErrConsoleLinked {
 		t.Fatalf("linked elsewhere: %v", err)
 	}
-	if _, already, err := c.BeginApproval(ctx, p2.Code, "acct-a"); err != nil || !already {
+	if _, already, err := c.BeginApproval(ctx, p2.Code, "acct-a", NumberProof{}); err != nil || !already {
 		t.Fatalf("already linked to same: %v %v", already, err)
 	}
 
@@ -176,14 +206,14 @@ func TestPairingLifecycle(t *testing.T) {
 	if got, err := c.ForgetSubject(ctx, t1.Subject); err != nil || got != uid {
 		t.Fatalf("forget subject: %d %v", got, err)
 	}
-	t3, _, err := c.BeginApproval(ctx, p2.Code, "acct-b")
+	t3, _, err := c.BeginApproval(ctx, p2.Code, "acct-b", NumberProof{})
 	if err != nil || t3.Subject == t1.Subject {
 		t.Fatalf("relink: %+v %v", t3, err)
 	}
 	if err := c.AbortApproval(ctx, t3.Code, "acct-b"); err != nil {
 		t.Fatal(err)
 	}
-	t4, _, err := c.BeginApproval(ctx, p2.Code, "acct-c")
+	t4, _, err := c.BeginApproval(ctx, p2.Code, "acct-c", NumberProof{})
 	if err != nil || t4.Subject == t3.Subject {
 		t.Fatalf("after abort: %+v %v", t4, err)
 	}
@@ -191,7 +221,7 @@ func TestPairingLifecycle(t *testing.T) {
 
 	// Expiry, stuck approvals.
 	_, _ = pool.Exec(ctx, `UPDATE wfc_pairing_codes SET expires_at = now() - interval '5 minutes' WHERE user_id=$1`, uid)
-	if _, err := c.LookupPairingCode(ctx, p2.Code); err != ErrPairingCode {
+	if _, err := c.LookupPairingCode(ctx, p2.Code, NumberProof{}); err != ErrPairingCode {
 		t.Fatalf("expired: %v", err)
 	}
 	_, _ = pool.Exec(ctx, `UPDATE wfc_pairing_codes SET approving='acct-d', subject='424242.1' WHERE code=$1`, p2.Code)
@@ -239,7 +269,7 @@ func TestLinkGate(t *testing.T) {
 		t.Fatalf("fresh: %v %v asked %d", r, err, core.asked)
 	}
 	p, _ := c.IssuePairingCode(ctx, PairingRequest{UserID: uid, Unit: UnitDS})
-	tg, _, err := c.BeginApproval(ctx, p.Code, "acct-g")
+	tg, _, err := c.BeginApproval(ctx, p.Code, "acct-g", NumberProof{})
 	if err != nil {
 		t.Fatal(err)
 	}

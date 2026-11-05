@@ -1,6 +1,7 @@
 package database
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
@@ -8,6 +9,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"net"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -32,16 +35,21 @@ const (
 	// reused, so a console only needs a new one every PairingTTL.
 	PairingNewPerHour = 6
 
-	// PairingMaxLive caps live codes across the network.
-	PairingMaxLive = 5000
+	// PairingMaxLive caps live codes across the network (the link-number space is 6000).
+	PairingMaxLive = 2000
 
 	pairingAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // 32 symbols, no I/O/0/1
 	pairingLength   = 8
 
-	// Link numbers are six digits, 100000-999999: outside every DWC error range, so a player
-	// reading "Error Code: 482913" cannot mistake it for a real error.
-	linkNumberMin = 100000
-	linkNumberMax = 999999
+	// A link number is a NAS return code 4000-9999. Every DWC title shows a refused NAS login
+	// as "Error Code: 2xxxx" (20000 + return code), on the Wii and the DS alike (step 0 of
+	// prds#139: 1..9999 display as-is, five digits fall back to 20101), so the player reads
+	// 24000-29999 and types that. 6000 numbers are guessable, so a claim by number needs a
+	// second factor (NumberProof).
+	linkNumberMin = 4000
+	linkNumberMax = 9999
+	// LinkNumberDisplayOffset turns a link number into the error code the console shows.
+	LinkNumberDisplayOffset = 20000
 )
 
 // Unit codes, as in the NAS token.
@@ -75,7 +83,8 @@ ALTER TABLE wfc_pairing_codes
 	ADD COLUMN IF NOT EXISTS gsbrcd text NOT NULL DEFAULT '',
 	ADD COLUMN IF NOT EXISTS name text NOT NULL DEFAULT '',
 	ADD COLUMN IF NOT EXISTS approving text,
-	ADD COLUMN IF NOT EXISTS subject text;
+	ADD COLUMN IF NOT EXISTS subject text,
+	ADD COLUMN IF NOT EXISTS net_tag bytea;
 CREATE UNIQUE INDEX IF NOT EXISTS wfc_pairing_codes_live_number
 	ON wfc_pairing_codes (number) WHERE used_at IS NULL AND number IS NOT NULL;
 CREATE TABLE IF NOT EXISTS wfc_pairing_linked (
@@ -144,20 +153,23 @@ func NormalizePairingCode(raw string) (string, bool) {
 	return c, true
 }
 
-// ParsePairingInput reads what a player typed: an 8-symbol code (code set) or a 6-digit link
-// number (number set). ok is false when it is neither.
+// ParsePairingInput reads what a player typed: an 8-symbol code (code set) or the 5-digit error
+// code a refused console showed (number set to the link number). ok is false when it is neither.
 func ParsePairingInput(raw string) (code string, number int, ok bool) {
 	if c, ok := NormalizePairingCode(raw); ok {
 		return c, 0, true
 	}
 	d := strings.NewReplacer("-", "", " ", "").Replace(strings.TrimSpace(raw))
-	if len(d) == 6 {
-		if n, err := strconv.Atoi(d); err == nil && n >= linkNumberMin && n <= linkNumberMax {
-			return "", n, true
+	if len(d) == 5 {
+		if n, err := strconv.Atoi(d); err == nil && n-LinkNumberDisplayOffset >= linkNumberMin && n-LinkNumberDisplayOffset <= linkNumberMax {
+			return "", n - LinkNumberDisplayOffset, true
 		}
 	}
 	return "", 0, false
 }
+
+// DisplayNumber is the error code a console shows for a link number.
+func DisplayNumber(n int) int { return n + LinkNumberDisplayOffset }
 
 // FormatPairingCode writes a code as XXXX-XXXX for display.
 func FormatPairingCode(code string) string {
@@ -192,6 +204,7 @@ type PairingRequest struct {
 	Unit     byte
 	GameCode string // gsbrcd of the game that asked, for the confirm screen
 	Name     string // in-game name as sent, for the confirm screen
+	NetTag   []byte // NetTag of the console's address, for a claim by number (never the address)
 }
 
 // Pairing is a live code and its link number.
@@ -208,11 +221,11 @@ func (c *Connection) IssuePairingCode(ctx context.Context, req PairingRequest) (
 	var p Pairing
 	var num *int
 	err := c.pool.QueryRow(ctx, `
-UPDATE wfc_pairing_codes SET gsbrcd = $2, name = $3, unit = $4
+UPDATE wfc_pairing_codes SET gsbrcd = $2, name = $3, unit = $4, net_tag = COALESCE($5, net_tag)
 WHERE code = (SELECT code FROM wfc_pairing_codes
 	WHERE user_id = $1 AND used_at IS NULL AND approving IS NULL AND expires_at > now()
 	ORDER BY created_at DESC LIMIT 1)
-RETURNING code, number, expires_at`, int64(req.UserID), req.GameCode, req.Name, int16(req.Unit)).Scan(&p.Code, &num, &p.ExpiresAt)
+RETURNING code, number, expires_at`, int64(req.UserID), req.GameCode, req.Name, int16(req.Unit), req.NetTag).Scan(&p.Code, &num, &p.ExpiresAt)
 	if err == nil {
 		if num != nil {
 			p.Number = *num
@@ -237,12 +250,12 @@ RETURNING code, number, expires_at`, int64(req.UserID), req.GameCode, req.Name, 
 		return Pairing{}, ErrPairingLimit
 	}
 
-	for attempt := 0; attempt < 8; attempt++ {
+	for attempt := 0; attempt < 16; attempt++ {
 		code, number := NewPairingCode(), NewLinkNumber()
 		tag, err := c.pool.Exec(ctx, `
-INSERT INTO wfc_pairing_codes (code, user_id, expires_at, number, unit, gsbrcd, name)
-VALUES ($1, $2, now() + make_interval(secs => $3), $4, $5, $6, $7) ON CONFLICT DO NOTHING`,
-			code, int64(req.UserID), PairingTTL.Seconds(), number, int16(req.Unit), req.GameCode, req.Name)
+INSERT INTO wfc_pairing_codes (code, user_id, expires_at, number, unit, gsbrcd, name, net_tag)
+VALUES ($1, $2, now() + make_interval(secs => $3), $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING`,
+			code, int64(req.UserID), PairingTTL.Seconds(), number, int16(req.Unit), req.GameCode, req.Name, req.NetTag)
 		if err != nil {
 			var pgErr interface{ SQLState() string }
 			if errors.As(err, &pgErr) && pgErr.SQLState() == "23505" { // live number taken
@@ -269,6 +282,25 @@ type PairingTarget struct {
 	GameCode  string // the game that asked, for the confirm screen
 	Name      string
 	Subject   string // set once an approval has started
+	ByNumber  bool   // matched by link number (a NumberProof held), not by code
+}
+
+// NumberProof is the second factor a claim by link number needs (a code needs none): the
+// claimer's network tags (today's and yesterday's, from NetTags) or the console's in-game name
+// as the player reads it on the console. Either one matching is enough.
+type NumberProof struct {
+	NetTags [][]byte
+	Name    string
+}
+
+func (p NumberProof) holds(tag []byte, name string) bool {
+	for _, t := range p.NetTags {
+		if len(tag) > 0 && bytes.Equal(t, tag) {
+			return true
+		}
+	}
+	n := strings.TrimSpace(name)
+	return n != "" && strings.EqualFold(strings.TrimSpace(p.Name), n)
 }
 
 const pairingWhere = `used_at IS NULL AND expires_at > now() AND (code = $1 OR ($2 <> 0 AND number = $2))`
@@ -283,7 +315,8 @@ func pairingArgs(raw string) (string, int, error) {
 
 // LookupPairingCode reports the console behind a live code or link number without spending it.
 // A code that another account is approving reads as unknown.
-func (c *Connection) LookupPairingCode(ctx context.Context, raw string) (PairingTarget, error) {
+// A link number resolves only with a NumberProof that holds; otherwise it reads as unknown.
+func (c *Connection) LookupPairingCode(ctx context.Context, raw string, proof NumberProof) (PairingTarget, error) {
 	code, number, err := pairingArgs(raw)
 	if err != nil {
 		return PairingTarget{}, err
@@ -291,15 +324,19 @@ func (c *Connection) LookupPairingCode(ctx context.Context, raw string) (Pairing
 	var t PairingTarget
 	var uid int64
 	var unit int16
-	err = c.pool.QueryRow(ctx, `SELECT code, user_id, unit, expires_at, gsbrcd, name FROM wfc_pairing_codes
-		WHERE `+pairingWhere+` AND approving IS NULL`, code, number).Scan(&t.Code, &uid, &unit, &t.ExpiresAt, &t.GameCode, &t.Name)
+	var tag []byte
+	err = c.pool.QueryRow(ctx, `SELECT code, user_id, unit, expires_at, gsbrcd, name, net_tag FROM wfc_pairing_codes
+		WHERE `+pairingWhere+` AND approving IS NULL`, code, number).Scan(&t.Code, &uid, &unit, &t.ExpiresAt, &t.GameCode, &t.Name, &tag)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return PairingTarget{}, ErrPairingCode
 	}
 	if err != nil {
 		return PairingTarget{}, err
 	}
-	t.UserID, t.Unit = uint64(uid), byte(unit)
+	if number != 0 && !proof.holds(tag, t.Name) {
+		return PairingTarget{}, ErrPairingCode
+	}
+	t.UserID, t.Unit, t.ByNumber = uint64(uid), byte(unit), number != 0
 	return t, nil
 }
 
@@ -307,7 +344,7 @@ func (c *Connection) LookupPairingCode(ctx context.Context, raw string) (Pairing
 // linked under. It is idempotent for the same account: a retry gets the same subject back.
 // A code another account is approving reads as unknown. alreadyLinked is set when the console
 // is linked to this same account already; ErrConsoleLinked when it is linked to another.
-func (c *Connection) BeginApproval(ctx context.Context, raw, accountID string) (t PairingTarget, alreadyLinked bool, err error) {
+func (c *Connection) BeginApproval(ctx context.Context, raw, accountID string, proof NumberProof) (t PairingTarget, alreadyLinked bool, err error) {
 	code, number, err := pairingArgs(raw)
 	if err != nil || accountID == "" {
 		return PairingTarget{}, false, ErrPairingCode
@@ -321,14 +358,19 @@ func (c *Connection) BeginApproval(ctx context.Context, raw, accountID string) (
 	var uid int64
 	var unit int16
 	var approving, subject *string
-	err = tx.QueryRow(ctx, `SELECT code, user_id, unit, expires_at, gsbrcd, name, approving, subject FROM wfc_pairing_codes
-		WHERE `+pairingWhere+` FOR UPDATE`, code, number).Scan(&t.Code, &uid, &unit, &t.ExpiresAt, &t.GameCode, &t.Name, &approving, &subject)
+	var tag []byte
+	err = tx.QueryRow(ctx, `SELECT code, user_id, unit, expires_at, gsbrcd, name, approving, subject, net_tag FROM wfc_pairing_codes
+		WHERE `+pairingWhere+` FOR UPDATE`, code, number).Scan(&t.Code, &uid, &unit, &t.ExpiresAt, &t.GameCode, &t.Name, &approving, &subject, &tag)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return PairingTarget{}, false, ErrPairingCode
 	}
 	if err != nil {
 		return PairingTarget{}, false, err
 	}
+	if number != 0 && !proof.holds(tag, t.Name) {
+		return PairingTarget{}, false, ErrPairingCode
+	}
+	t.ByNumber = number != 0
 	if approving != nil && *approving != accountID {
 		return PairingTarget{}, false, ErrPairingCode
 	}
@@ -562,4 +604,49 @@ func CodeHash(code string) string {
 	m := hmac.New(sha256.New, codeHashKey)
 	m.Write([]byte(code))
 	return fmt.Sprintf("%x", m.Sum(nil)[:3])
+}
+
+// NetTagKey is the key network tags are made with: WFC_NET_TAG_KEY, else WFC_INTERNAL_KEY.
+// wfc-nas and wfc-api must agree on it; nobody else needs it.
+func NetTagKey() []byte {
+	if k := os.Getenv("WFC_NET_TAG_KEY"); k != "" {
+		return []byte(k)
+	}
+	return []byte(os.Getenv("WFC_INTERNAL_KEY"))
+}
+
+// NetTag is a keyed, day-scoped hash of the network an address belongs to (the IPv4 address,
+// or the IPv6 /64), so a console's network and a browser's can be compared without keeping
+// either address. nil for an unusable address or an empty key.
+func NetTag(key []byte, ip string, day time.Time) []byte {
+	if len(key) == 0 {
+		return nil
+	}
+	if h, _, err := net.SplitHostPort(ip); err == nil {
+		ip = h
+	}
+	a := net.ParseIP(strings.Trim(ip, "[]"))
+	if a == nil {
+		return nil
+	}
+	prefix := ""
+	if v4 := a.To4(); v4 != nil {
+		prefix = v4.String()
+	} else {
+		prefix = a.Mask(net.CIDRMask(64, 128)).String() + "/64"
+	}
+	m := hmac.New(sha256.New, key)
+	m.Write([]byte("wfc-nettag|" + day.UTC().Format("2006-01-02") + "|" + prefix))
+	return m.Sum(nil)[:16]
+}
+
+// NetTags are an address's tags for today and yesterday (a code can outlive midnight).
+func NetTags(key []byte, ip string, now time.Time) [][]byte {
+	var out [][]byte
+	for _, d := range []time.Time{now, now.Add(-24 * time.Hour)} {
+		if t := NetTag(key, ip, d); t != nil {
+			out = append(out, t)
+		}
+	}
+	return out
 }
