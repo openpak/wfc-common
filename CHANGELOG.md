@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.8.1 - 2026-11-05
+
+- `ClearConsoleData`: an unlink's "also erase" removes the console's game data and personal fields but keeps its protocol ids. Deleting the profile rows (as `EraseUsers` does for a deleted account) left a DS whose game card still holds the old profile id unable to go online (error 60000) after relinking.
+
 ## v0.8.0 - 2026-11-05
 
 - Link-first (prds#139, design `prds/repos/wfc-link-first-design.md`): a console plays online only once it is linked to an OpenPak account.

@@ -359,3 +359,27 @@ func TestConsoleBanned(t *testing.T) {
 		t.Fatal("own ban")
 	}
 }
+
+func TestClearConsoleDataKeepsProfiles(t *testing.T) {
+	c, pool := testConn(t)
+	ctx := context.Background()
+	const u = int64(9200000001)
+	_, _ = pool.Exec(ctx, `DELETE FROM users WHERE user_id=$1`, u)
+	defer pool.Exec(ctx, `DELETE FROM users WHERE user_id=$1`, u)
+	if _, err := pool.Exec(ctx, `INSERT INTO users (user_id, gsbrcd, password, ng_device_id, firstname, lastname, last_ip_address)
+		VALUES ($1,'AMCJ2lmitne','',array[]::bigint[],'Ann','Lee','198.51.100.1')`, u); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.ClearConsoleData(ctx, []int64{u}); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	var first *string
+	var last, ip string
+	if err := pool.QueryRow(ctx, `SELECT count(*), max(firstname), max(lastname), max(last_ip_address) FROM users WHERE user_id=$1`, u).Scan(&n, &first, &last, &ip); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 || first != nil || last != "" || ip != "" {
+		t.Fatalf("profile kept with personal fields cleared: n=%d first=%v last=%q ip=%q", n, first, last, ip)
+	}
+}
