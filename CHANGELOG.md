@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.9.0 - 2026-11-05
+
+- Real player addresses behind rootless port publishing (prds#149): `common.EncodeProxyV2`/`ParseProxyV2` (PROXY protocol v2, stream and datagram), `common.ProxyListener` (TCP: a v2 header starts every connection, `RemoteAddr` is the player), `common.ListenGameUDP(address, proxyAddress)` returning a `DualPacketConn` (direct datagrams as before, plus v2-framed datagrams from wfc-front; `WriteTo` answers each player through the socket it was last seen on, framed for the relay). With no proxy address the socket is the plain one, as before.
+
 ## v0.8.1 - 2026-11-05
 
 - `ClearConsoleData`: an unlink's "also erase" removes the console's game data and personal fields but keeps its protocol ids. Deleting the profile rows (as `EraseUsers` does for a deleted account) left a DS whose game card still holds the old profile id unable to go online (error 60000) after relinking.
